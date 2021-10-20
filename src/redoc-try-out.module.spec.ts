@@ -4,7 +4,7 @@ import { RedocTryOutModule } from './redoc-try-out.module';
 import { AdapterHandler } from './adapters/adapter-handler';
 import { RedocDocument } from './interfaces/redoc-document.interface';
 import { RedocModuleOptions } from './interfaces/redoc-module-options.interface';
-import { RedocDocumentModel } from './model/redoc-document.model'
+import { RedocDocumentModel } from './models/redoc-document.model'
 import { RedocTryOutModuleError } from './errors/redoc-try-out-module.error';
 
 describe('RedocTryOutModule', () => {

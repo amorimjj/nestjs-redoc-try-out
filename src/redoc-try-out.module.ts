@@ -3,7 +3,7 @@ import { OpenAPIObject } from '@nestjs/swagger';
 import { normalizePath } from './utils/normalize-path.util';
 import { RedocModuleOptions} from './interfaces/redoc-module-options.interface';
 import { AdapterHandler } from './adapters/adapter-handler';
-import { RedocDocumentModel } from './model/redoc-document.model';
+import { RedocDocumentModel } from './models/redoc-document.model';
 import { RedocTryOutModuleError } from './errors/redoc-try-out-module.error';
 
 export class RedocTryOutModule {
