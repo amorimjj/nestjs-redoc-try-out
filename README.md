@@ -59,12 +59,12 @@ bootstrap();
 ## Available options
 
 ### RedocTryOutModule Setup Options
-| Option                  | Description                     | Type                                                                              | Note                                      |
-| ----------------------- | ------------------------------- | --------------------------------------------------------------------------------- | ----------------------------------------- |
-| path                    | The path to mount the Redoc UI  | string                                                                            |                                           |
-| app                     | An application instance         | [INestApplication](https://docs.nestjs.com/first-steps)                           |                                           |
-| document                | URL swagger's spec file         | [OpenAPIObject](https://docs.nestjs.com/openapi/introduction#document-options)    |                                           |
-| options (optional)      | Redoc try it out config options | [RedocTryItOutOptions](#Redoc-Try-It-Out-Options)                                 | See options table                         |
+| Option                  | Description                     | Type                                                                              | 
+| ----------------------- | ------------------------------- | --------------------------------------------------------------------------------- | 
+| path                    | The path to mount the Redoc UI  | string                                                                            | 
+| app                     | An application instance         | [INestApplication](https://docs.nestjs.com/first-steps)                           | 
+| document                | URL swagger's spec file         | [OpenAPIObject](https://docs.nestjs.com/openapi/introduction#document-options)    | 
+| options (optional)      | Redoc try it out config options | [RedocTryItOutOptions](#Redoc-Try-It-Out-Options)                                 | 
 
 ### Redoc Options
 RedocOptions extends <i>RedocTryItOutOptions</i>, documented on [Redoc Try Out Documentation](https://www.npmjs.com/package/redoc-try-it-out#redoc-try-it-out-options)
