@@ -1,0 +1,8 @@
+.husky
+src/
+node_modules/
+.idea
+.eslint*
+tsconfig*
+jest.config.js
+nestjs-redoc-try-out.png
