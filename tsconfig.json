@@ -3,7 +3,6 @@
     "experimentalDecorators": true,
     "target": "ES6",
     "module": "commonjs",
-    "outDir": "dist",
     "strict": false,
     "baseUrl": "src",
     "esModuleInterop": true,
@@ -12,7 +11,10 @@
     "removeComments": true,
     "forceConsistentCasingInFileNames": true,
     "declaration": true,
-    "sourceMap": false
+    "sourceMap": false,
+    "declaration": true,
+    "sourceMap": false,
+    "outDir": "dist"
   },
-  "exclude": ["node_modules", "**/*spec.ts"]
+  "exclude": ["node_modules",  "dist", "**/*spec.ts"]
 }
