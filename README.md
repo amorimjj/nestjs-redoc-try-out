@@ -149,3 +149,4 @@ Bellow are a list of changes, some might go undocumented
 - Add Fastify support
 - Implement authentication
 - Refactoring code gen
+- Add custom language
