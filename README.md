@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./nestjs-redoc-try-out" height="166" alt="NestJS Redoc Try Out Module" />
+  <img src="./nestjs-redoc-try-out.png" height="166" alt="NestJS Redoc Try Out Module" />
 </p>
 <p align="center">
     An unofficial <a href="https://nestjs.com">NestJS</a> module for <a href="https://www.npmjs.com/package/redoc-try-it-out">Redoc Try Out</a>
