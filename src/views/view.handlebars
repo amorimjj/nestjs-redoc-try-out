@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        {{#if options.title }}
+            <title>{{ options.title }}</title>
+        {{else if document.info.title }}
+            <title>{{ document.info.title }}</title>
+        {{else if document.info.description }}
+            <title>{{ document.info.description }}</title>
+        {{else }}
+            <title>Online documentation</title>
+        {{/if}}
+        <meta charset="utf-8" />
+        {{#if options.favicon }}
+            <link rel="shortcut icon" type="image/x-icon" href="{{ options.favicon }}" />
+        {{/if}}
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
+    </head>
+    <body>
+        <div id="redoc_container"></div>
+        <script type="text/javascript" src="{{ path }}/{{ tryItOutJsMinFileName }}"></script>
+        <script>
+            RedocTryItOut.init('{{ docUrl }}', {{{ toJson options }}}, document.getElementById("redoc_container"));
+        </script>
+    </body>
+</html>
