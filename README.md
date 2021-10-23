@@ -144,6 +144,7 @@ It's based on [nestjs-redoc](https://www.npmjs.com/package/nestjs-redoc) work.
 Bellow are a list of changes, some might go undocumented
 
 - 1.0.0 - First release
+- 1.0.1 - Fix codegen issue for authenticated spec
 
 ## TODO
 - Add Fastify support
