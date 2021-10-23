@@ -46,9 +46,8 @@ export function getSnippets(openApi, targets) {
     const endpointHarInfoList = OpenAPIToHar.getAll(openApi);
 
     const results = [];
-    for (let i in endpointHarInfoList) {
+    for (const harInfo of endpointHarInfoList) {
         // create HTTPSnippet object:
-        const harInfo = endpointHarInfoList[i];
         const snippets = [];
         for (const har of harInfo.hars) {
             const snippet = new HTTPSnippet(har);

@@ -310,8 +310,7 @@ const getFullPath = function (openApi: OpenAPIObject, path: string, method: stri
         openApi.paths[path].parameters || openApi.paths[path][method].parameters;
 
     if (typeof parameters !== 'undefined') {
-        for (let i in parameters) {
-            let param = parameters[i];
+        for (let param of parameters) {
             if (typeof param['$ref'] === 'string' && /^#/.test(param['$ref'])) {
                 param = resolveRef(openApi, param['$ref']);
             }
@@ -344,8 +343,7 @@ const getHeadersArray = function (openApi, path, method) {
 
     // 'accept' header:
     if (typeof pathObj.consumes !== 'undefined') {
-        for (let i in pathObj.consumes) {
-            const type = pathObj.consumes[i];
+        for (const type of pathObj.consumes) {
             headers.push({
                 name: 'accept',
                 value: type,
@@ -355,8 +353,7 @@ const getHeadersArray = function (openApi, path, method) {
 
     // headers defined in path object:
     if (typeof pathObj.parameters !== 'undefined') {
-        for (let k in pathObj.parameters) {
-            const param = pathObj.parameters[k];
+        for (const param of pathObj.parameters) {
             if (
                 typeof param.in !== 'undefined' &&
                 param.in.toLowerCase() === 'header'
@@ -371,8 +368,8 @@ const getHeadersArray = function (openApi, path, method) {
     let apiKeyAuthDef;
     let oauthDef;
     if (typeof pathObj.security !== 'undefined') {
-        for (var l in pathObj.security) {
-            const secScheme = Object.keys(pathObj.security[l])[0];
+        for (const scheme of pathObj.security) {
+            const secScheme = Object.keys(scheme) as any;
             const secDefinition = openApi.securityDefinitions
                 ? openApi.securityDefinitions[secScheme]
                 : openApi.components.securitySchemes[secScheme];
@@ -409,8 +406,8 @@ const getHeadersArray = function (openApi, path, method) {
         }
     } else if (typeof openApi.security !== 'undefined') {
         // Need to check OAS 3.0 spec about type http and scheme
-        for (let m in openApi.security) {
-            const secScheme = Object.keys(openApi.security[m])[0];
+        for (const scheme of openApi.security) {
+            const secScheme = Object.keys(scheme) as any;
             const secDefinition = openApi.components.securitySchemes[secScheme];
             const authType = secDefinition.type.toLowerCase();
             let authScheme = null;
