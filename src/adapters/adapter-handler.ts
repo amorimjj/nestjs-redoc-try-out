@@ -34,7 +34,7 @@ export abstract class AdapterHandler
     }
 
     protected get docUrl(): string {
-       return [this.path,`${this.options.docName||'swagger'}.json`].join('/');
+       return [this.path,`${this.options?.docName||'swagger'}.json`].join('/');
     }
 
     private get isExpectedAdapter(): boolean {
