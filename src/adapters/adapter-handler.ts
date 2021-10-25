@@ -76,7 +76,7 @@ class ExpressAdapterHandler extends AdapterHandler {
 
     private async setupRedocHtml(): Promise<void> {
         const { path, docUrl, options, document } = this;
-        const redocHTML = await renderRedocView({ path, tryItOutJsMinFileName, docUrl, options, document });
+        const redocHTML = await renderRedocView({ path, tryItOutJsMinFileName, docUrl, options: options||{}, document });
         this.httpAdapter.get(this.path, async (req: Request, res: Response) => res.send(redocHTML));
     }
 
