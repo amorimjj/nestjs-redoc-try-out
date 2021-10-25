@@ -145,6 +145,7 @@ Bellow are a list of changes, some might go undocumented
 
 - 1.0.0 - First release
 - 1.0.1 - Fix codegen issue for authenticated spec
+- 1.0.2 - Fix docName undefinded error
 
 ## TODO
 - Add Fastify support
