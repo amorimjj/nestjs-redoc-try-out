@@ -1,519 +1,546 @@
 import * as OpenAPISampler from 'openapi-sampler';
 import { OpenAPIObject } from '@nestjs/swagger';
+import { ParameterObject, SecuritySchemeObject, RequestBodyObject, SchemaObject, ContentObject } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
 
-/**
- * Translates given OpenAPI document to an array of HTTP Archive (HAR) 1.2 Request Object.
- * See more:
- *  - http://swagger.io/specification/
- *  - http://www.softwareishard.com/blog/har-12-spec/#request
- *
- * Example HAR Request Object:
- * "request": {
- *   "method": "GET",
- *   "url": "http://www.example.com/path/?param=value",
- *   "httpVersion": "HTTP/1.1",
- *   "cookies": [],
- *   "headers": [],
- *   "queryString" : [],
- *   "postData" : {},
- *   "headersSize" : 150,
- *   "bodySize" : 0,
- *   "comment" : ""
- * }
- */
+import { InvalidAuthTypeError, InvalidMethodError } from './errors';
+import { OpenApiWrapper, PathItemObjectWrapper, OperationObjectWrapper, HttpMethod, SecurityInfo } from './openapi-wrapper';
 
-export function getEndpoint(openApi:OpenAPIObject, path: string, method:string, queryParamValues?: {}): any[] {
+export { HttpMethod } from './openapi-wrapper';
 
-    queryParamValues = queryParamValues || {};
+const VALID_MIME_TYPES = ['application/json', 'application/xml', 'application/x-www-form-urlencoded', 'multipart/form-data'] as const;
+type MimeType = typeof VALID_MIME_TYPES[number];
 
-    const baseUrl = getBaseUrl(openApi, path, method);
+interface IHar {
+    url: string;
+    description?: string;
+}
 
-    const baseHar = {
-        method: method.toUpperCase(),
-        url: baseUrl + getFullPath(openApi, path, method),
-        headers: getHeadersArray(openApi, path, method),
-        queryString: getQueryStrings(openApi, path, method, queryParamValues),
-        httpVersion: 'HTTP/1.1',
-        cookies: [],
-        headersSize: 0,
-        bodySize: 0,
-    };
+export interface IHarItem {
+    name: string;
+    value: string;
+}
 
-    let hars = [];
+export interface IHarPath extends IHar {
+    method: HttpMethod,
+    pathname: string;
+    hars: IHarMethod[]
+}
 
-    // get payload data, if available:
-    const postDatas = getPayloads(openApi, path, method);
+export interface IHarMethod extends IHar {
+    bodySize: number;
+    comment: string;
+    cookies: IHarItem[];
+    headers: IHarItem[];
+    headersSize: number;
+    httpVersion: string;
+    method: HttpMethod;
+    pathname: string;
+    postData?: { mimeType?: string, text?: string, params?: IHarItem[] };
+    queryString: IHarItem[];
+}
 
-    // For each postData create a snippet
-    if (postDatas.length > 0) {
-        for (const postData of postDatas) {
-            const copiedHar = JSON.parse(JSON.stringify(baseHar));
-            copiedHar.postData = postData;
-            copiedHar.comment = postData.mimeType;
-            copiedHar.headers.push({
-                name: 'content-type',
-                value: postData.mimeType,
-            });
-            hars.push(copiedHar);
-        }
-    } else {
-        hars = [baseHar];
+export interface IHarPostData {
+    mimeType?: MimeType;
+    text?: string;
+    params?: { name: string, value: string}[];
+}
+
+export interface IParameters {
+    getHeaderParameters(): IHarItem[];
+    getQueryParameters(): IHarItem[];
+    getCookieParameters(): IHarItem[];
+}
+
+export interface IMethodToHar {
+    cookies: IHarItem[];
+    description?: string;
+    headers: IHarItem[];
+    httpMethod: HttpMethod;
+    httpVersion: string;
+    pathname: string;
+    postData: PostDataToHar;
+    queryString: IHarItem[];
+    url: string;
+    toArray(): IHarMethod[];
+}
+
+export interface IPathToHar {
+    parameters: IParameters;
+    baseUrl: string;
+    path: string;
+    url: string;
+    description: string;
+    methods: IMethodToHar[];
+    availableMethods: string[];
+    get: IMethodToHar;
+    put: IMethodToHar;
+    post: IMethodToHar;
+    delete: IMethodToHar;
+    options: IMethodToHar;
+    head: IMethodToHar;
+    trace: IMethodToHar;
+    patch: IMethodToHar;
+    getMethod(method: HttpMethod): IMethodToHar;
+    toArray(): IHarPath[];
+}
+
+abstract class ParameterItem<Scheme extends ParameterObject|SecuritySchemeObject> implements IHarItem {
+    protected readonly scheme:Scheme;
+
+    name: string;
+    value: string;
+
+    constructor(scheme:Scheme) {
+        this.scheme = scheme;
+        this.setName();
+        this.setValue();
     }
 
-    return hars;
-};
+    public get in(): string {
+        return this.scheme['in']?.toLowerCase() || '';
+    }
 
-/**
- * Get the payload definition for the given endpoint (path + method) from the
- * given OAI specification. References within the payload definition are
- * resolved.
- *
- * @param  {object} openApi
- * @param  {string} path
- * @param  {string} method
- * @return {array}  A list of payload objects
- */
-const getPayloads = function (openApi, path, method) {
-    if (typeof openApi.paths[path][method].parameters !== 'undefined') {
-        for (const param of openApi.paths[path][method].parameters) {
-            if (
-                typeof param.in !== 'undefined' &&
-                param.in.toLowerCase() === 'body' &&
-                typeof param.schema !== 'undefined'
-            ) {
-                try {
-                    const sample = OpenAPISampler.sample(
-                        param.schema,
-                        { skipReadOnly: true },
-                        openApi
-                    );
-                    return [
-                        {
-                            mimeType: 'application/json',
-                            text: JSON.stringify(sample),
-                        },
-                    ];
-                } catch (err) {
-                    console.log(err);
-                    return null;
-                }
+    public get isHeader(): boolean {
+        return this.in === 'header';
+    }
+
+    public get isQuery(): boolean {
+        return this.in === 'query';
+    }
+
+    public get isCookie(): boolean {
+        return this.in === 'cookie';
+    }
+
+    protected abstract setName();
+    protected abstract setValue();
+
+    public isEqualTo(paramenter: ParameterItem<Scheme>) {
+        return this.name === paramenter.name && this.in === paramenter.in;
+    }
+
+    public toHarItem(): IHarItem {
+        return { name: this.name, value: this.value }
+    }
+} 
+
+class AuthParameterToHar extends ParameterItem<SecuritySchemeObject> {
+
+    public get isInHeader(): boolean {
+        return !this.isApikey || this.isHeader;
+    }
+
+    private get authType(): string {
+        const authType = this.scheme.type.toLowerCase();
+        return authType === 'http' ? this.scheme.scheme?.toLowerCase() : authType;
+    }
+
+    private get isApikey(): boolean {
+        return this.authType === 'apikey';
+    }
+    
+    constructor(securityScheme: SecuritySchemeObject) {
+        super(securityScheme);
+
+        const validAuthTypes = ['basic', 'apikey', 'oauth2', 'bearer'];
+
+        if ( !validAuthTypes.includes(this.authType ) ) {
+            throw new InvalidAuthTypeError(this.authType);
+        }
+    }
+
+    private getApiKeySchemeName(): string {
+        return this.isApikey && this.scheme.name ? this.scheme.name : '';
+    }
+
+    private getApiKeyHeaderValue(): string {
+        return this.isApikey ? 'REPLACE_KEY_VALUE' : '';
+    }
+
+    private getTokenHeaderValue(): string {
+        return this.authType === 'basic' ? 'Basic REPLACE_BASIC_AUTH' : 'Bearer REPLACE_BEARER_TOKEN';
+    }
+
+    protected setName(): void {
+        this.name = this.getApiKeySchemeName() || 'Authorization';
+    }
+
+    protected setValue(): void {
+        this.value = this.getApiKeyHeaderValue() || this.getTokenHeaderValue();
+    }
+}
+
+class ParameterToHar extends ParameterItem<ParameterObject> {
+
+    private get type(): string {
+        return this.scheme.schema['type'];
+    }
+
+    private get example(): string {
+        return this.scheme.example || '';
+    }
+
+    private get default(): string {
+        return this.scheme.schema['default'] || this.example;
+    }
+
+    protected setName(): void {
+        this.name = this.scheme.name;
+    }
+
+    protected setValue(): void {
+        this.value = this.default || `SOME_${this.type.toUpperCase()}_VALUE`;
+    }
+}
+
+class Parameters implements IParameters {
+
+    private parent?: Parameters;
+
+    private parameters: ParameterToHar[];
+
+    constructor(parameters: ParameterObject[], parent?: Parameters) {
+        this.parameters = ((parameters||[]).map(param => new ParameterToHar(param)));
+        this.parent = parent;
+    }
+
+    private merge(parameters: ParameterToHar[], parentParameters: ParameterToHar[]): IHarItem[] {
+        (parentParameters||[]).forEach(parentParameter => {
+            if ( !parameters.find(parameter => parameter.isEqualTo(parentParameter)) ) {
+                parameters.push(parentParameter);
+            }
+        });
+        return parameters.map(param => param.toHarItem())
+    }
+
+    protected get headerParameters(): ParameterToHar[] {
+        return this.parameters.filter(param => param.isHeader);
+    }
+
+    protected get queryParameters(): ParameterToHar[] {
+        return this.parameters.filter(param => param.isQuery);
+    }
+
+    protected get cookieParameters(): ParameterToHar[] {
+        return this.parameters.filter(param => param.isCookie);
+    }
+
+    public getHeaderParameters(): IHarItem[] {
+        return this.merge(this.headerParameters, this.parent?.headerParameters);
+    }
+
+    public getQueryParameters(): IHarItem[] {
+        return this.merge(this.queryParameters, this.parent?.queryParameters);
+    }
+
+    public getCookieParameters(): IHarItem[] {
+        return this.merge(this.cookieParameters, this.parent?.cookieParameters);
+    }
+}
+
+class MethodSecurityRequirements {
+
+    private securityInfo: SecurityInfo;
+
+    constructor(securityInfo: SecurityInfo) {
+        this.securityInfo = securityInfo;
+    }
+
+    protected getAuthParameter(id: string): AuthParameterToHar {
+        const scheme = this.securityInfo.getSecurityScheme(id);
+        return new AuthParameterToHar(scheme);
+    }
+
+    protected get nonPublicRequirements(): string[] {
+        return this.securityInfo.requirements.filter(requirement => requirement !== 'public');
+    }
+
+    public getSecurityHeaders(): IHarItem[] {
+        return this.nonPublicRequirements
+            .map(requirement => this.getAuthParameter(requirement))
+            .filter(authParameter => authParameter.isInHeader)
+            .map(authParameter => authParameter.toHarItem());
+    }
+}
+
+class PostDataToHar {
+
+    private content: ContentObject;
+    private postDataArray: IHarPostData[];
+
+    constructor(requestBody: RequestBodyObject) {
+        this.content = requestBody?.content||{};
+    }
+
+    private encodeURIComponent(value: string): string {
+        return encodeURIComponent(value).replace(/\%20/g, '+')
+    }
+
+    private encodeURIParam(param: { name: string, value: string }): { name: string, value: string } {
+        param.name = this.encodeURIComponent(param.name);
+        param.value = this.encodeURIComponent(param.value);
+        return param;
+    }
+
+    private stringify(value: any): string {
+        return typeof value === 'string' ? value : JSON.stringify(value)
+    }
+
+    private sampleToPayLoad(sample: Record<string, string>, type: MimeType): IHarPostData {
+        if ( sample === undefined ) {
+            return;
+        }
+        return this.sampleToFormData(sample, type);
+    }
+
+    private sampleToFormData(sample: Record<string, string>, type: MimeType): IHarPostData {
+        if ( type === 'multipart/form-data' ) {
+            const params = Object.entries(sample).map(([name, value]) => (
+                { name: name, value: this.stringify(value) }
+            ));
+            return {
+                mimeType: type,
+                params: params,
+            };
+        }
+
+        return this.sampleToFormUrlEncoded(sample, type);
+    }
+
+    private sampleToFormUrlEncoded(sample: Record<string, string>, type: MimeType): IHarPostData {
+        if ( type === 'application/x-www-form-urlencoded' ) {
+            const params = Object.entries(sample).map(([name, value]) => this.encodeURIParam({ name, value }));
+            return {
+                mimeType: type,
+                params: params,
+                text: params.map(param => `${param.name}=${param.value}`).join('&')
             }
         }
+
+        return this.sampleToJson(sample, type);
     }
 
-    if (
-        openApi.paths[path][method].requestBody &&
-        openApi.paths[path][method].requestBody['$ref']
-    ) {
-        openApi.paths[path][method].requestBody = resolveRef(
-            openApi,
-            openApi.paths[path][method].requestBody['$ref']
+    private sampleToJson(sample: Record<string, string>, type: MimeType): IHarPostData {
+        return {
+            mimeType: type,
+            text: this.stringify(sample)
+        };
+    }
+
+    private get availableContentTypes(): string[] {
+        return Object.keys(this.content).filter(
+            (contentType: MimeType) => VALID_MIME_TYPES.includes(contentType)
         );
     }
 
-    const payloads = [];
-    if (
-        openApi.paths[path][method].requestBody &&
-        openApi.paths[path][method].requestBody.content
-    ) {
-        [
-            'application/json',
-            'application/x-www-form-urlencoded',
-            'multipart/form-data',
-        ].forEach((type) => {
-            const content = openApi.paths[path][method].requestBody.content[type];
-            if (content && content.schema) {
-                const sample = OpenAPISampler.sample(
-                    content.schema,
-                    { skipReadOnly: true },
-                    openApi
-                );
-                if (type === 'application/json') {
-                    payloads.push({
-                        mimeType: type,
-                        text: JSON.stringify(sample),
-                    });
-                } else if (type === 'multipart/form-data') {
-                    if (sample !== undefined) {
-                        const params = [];
-                        Object.keys(sample).forEach((key) => {
-                            let value = sample[key];
-                            if (typeof sample[key] !== 'string') {
-                                value = JSON.stringify(sample[key]);
-                            }
-                            params.push({ name: key, value: value });
-                        });
-                        payloads.push({
-                            mimeType: type,
-                            params: params,
-                        });
-                    }
-                } else if (type == 'application/x-www-form-urlencoded') {
-                    if (sample === undefined) return null;
+    private get availableContents(): { mimeType: MimeType, schema: SchemaObject }[] {
+        return this.availableContentTypes
+            .map(contentType => ({ mimeType: contentType as MimeType, schema: this.content[contentType].schema as SchemaObject }))
+            .filter(content => !!content.schema);
+    }
 
-                    const params = [];
-                    Object.keys(sample).map((key) =>
-                        params.push({
-                            name: encodeURIComponent(key).replace(/\%20/g, '+'),
-                            value: encodeURIComponent(sample[key]).replace(/\%20/g, '+'),
-                        })
-                    );
-
-                    payloads.push({
-                        mimeType: 'application/x-www-form-urlencoded',
-                        params: params,
-                        text: Object.keys(params)
-                            .map((key) => key + '=' + sample[key])
-                            .join('&'),
-                    });
-                }
-            }
+    private dataAsArray(): IHarPostData[] {
+        this.postDataArray = this.availableContents.map(content => {
+            const sample = OpenAPISampler.sample(content.schema as any);
+            return this.sampleToPayLoad(sample as any, content.mimeType);
         });
-    }
-    return payloads;
-};
-
-/**
- * Gets the base URL constructed from the given openApi.
- *
- * @param  {Object} openApi OpenAPI document
- * @return {string}         Base URL
- */
-const getBaseUrl = function (openApi, path, method) {
-    if (openApi.paths[path][method].servers)
-        return openApi.paths[path][method].servers[0].url;
-    if (openApi.paths[path].servers) return openApi.paths[path].servers[0].url;
-    if (openApi.servers) return openApi.servers[0].url;
-
-    let baseUrl = '';
-    if (typeof openApi.schemes !== 'undefined') {
-        baseUrl += openApi.schemes[0];
-    } else {
-        baseUrl += 'http';
+        return this.postDataArray;
     }
 
-    if (openApi.basePath === '/') {
-        baseUrl += '://' + openApi.host;
-    } else {
-        baseUrl += '://' + openApi.host + openApi.basePath;
+    public toArray(): IHarPostData[] {
+        return this.postDataArray||this.dataAsArray();
     }
 
-    return baseUrl;
-};
-
-/**
- * Gets an object describing the the paremeters (header or query) in a given OpenAPI method
- * @param  {Object} param  parameter values to use in snippet
- * @param  {Object} values Optional: query parameter values to use in the snippet if present
- * @return {Object}        Object describing the parameters in a given OpenAPI method or path
- */
-const getParameterValues = function (param: any, values?: any) {
-    let value =
-        'SOME_' + (param.type || param.schema.type).toUpperCase() + '_VALUE';
-    if (values && typeof values[param.name] !== 'undefined') {
-        value =
-            values[param.name] + ''; /* adding a empty string to convert to string */
-    } else if (typeof param.default !== 'undefined') {
-        value = param.default + '';
-    } else if (
-        typeof param.schema !== 'undefined' &&
-        typeof param.schema.example !== 'undefined'
-    ) {
-        value = param.schema.example + '';
-    } else if (typeof param.example !== 'undefined') {
-        value = param.example + '';
+    get isEmpty(): boolean {
+        return this.availableContentTypes.length === 0;
     }
-    return {
-        name: param.name,
-        value: value,
-    };
-};
+}
 
-const parseParametersToQuery = function (openApi:OpenAPIObject, parameters: any, values: any): any {
-    const queryStrings = {};
+class MethodToHar implements IMethodToHar {
 
-    for (let i in parameters) {
-        let param = parameters[i];
-        if (typeof param['$ref'] === 'string' && /^#/.test(param['$ref'])) {
-            param = resolveRef(openApi, param['$ref']);
-        }
-        if (typeof param.schema !== 'undefined') {
-            if (
-                typeof param.schema['$ref'] === 'string' &&
-                /^#/.test(param.schema['$ref'])
-            ) {
-                param.schema = resolveRef(openApi, param.schema['$ref']);
-                if (typeof param.schema.type === 'undefined') {
-                    // many schemas don't have an explicit type
-                    param.schema.type = 'object';
-                }
-            }
-        }
-        if (typeof param.in !== 'undefined' && param.in.toLowerCase() === 'query') {
-            // param.name is a safe key, because the spec defines
-            // that name MUST be unique
-            queryStrings[param.name] = getParameterValues(param, values);
+    private readonly baseUrl: string;
+    public readonly pathname: string;
+    public readonly url: string;
+    public readonly httpMethod: HttpMethod;
+    public readonly headers: IHarItem[];
+    public readonly queryString: IHarItem[];
+    public readonly cookies: IHarItem[];
+    public readonly postData: PostDataToHar;
+    public readonly description?: string;
+
+    public readonly httpVersion: string = 'HTTP/1.1';
+
+    private readonly headersSize: number = 0;
+    private readonly bodySize: number = 0;
+    
+    private methodArray: IHarMethod[];
+
+    constructor(scheme: OperationObjectWrapper, parent: PathToHar) {
+        const parameters = new Parameters(scheme.parameters as ParameterObject[], parent.parameters);
+        const security = new MethodSecurityRequirements(scheme.securityInfo);
+        this.baseUrl = scheme.baseUrl;
+        this.pathname = parent.path;
+        this.httpMethod = scheme.method;
+        this.url = `${this.baseUrl}${scheme.pathname}`;
+        this.description = scheme.description || 'No description available';
+        this.headers = [...parameters.getHeaderParameters(), ...security.getSecurityHeaders()];
+        this.queryString = parameters.getQueryParameters();
+        this.cookies = parameters.getCookieParameters();
+        this.postData = new PostDataToHar(scheme.requestBody);
+    }
+
+    private metaData(postData?: IHarPostData): { headers: IHarItem[], comment: string } {
+        const comment = postData?.mimeType || '';
+        const headers = postData?.mimeType ? [...this.headers, { name: 'content-type', value: postData.mimeType }] : this.headers;
+        return { headers, comment }
+    }
+
+    private methodToHar(postData?: IHarPostData): IHarMethod {
+        const { httpMethod: method, pathname, url, queryString, cookies, httpVersion, headersSize, bodySize } = this;
+        const { headers, comment } = this.metaData(postData);
+        return {
+            method, pathname, url, headers, queryString, httpVersion, cookies, headersSize, bodySize, ...(postData && { postData }), comment
         }
     }
 
-    return queryStrings;
-};
-
-/**
- * Get array of objects describing the query parameters for a path and method
- * pair described in the given OpenAPI document.
- *
- * @param  {Object} openApi OpenApi document
- * @param  {string} path    Key of the path
- * @param  {string} method  Key of the method
- * @param  {Object} values  Optional: query parameter values to use in the snippet if present
- * @return {array}          List of objects describing the query strings
- */
-const getQueryStrings = function (openApi, path, method, values) {
-    // Set the optional parameter if it's not provided
-    if (typeof values === 'undefined') {
-        values = {};
+    private methodAsArray(): IHarMethod[] {
+        this.methodArray = this.postData.isEmpty ? [ this.methodToHar() ] : this.postData.toArray().map(postData => this.methodToHar(postData))
+        return this.methodArray;
     }
 
-    let pathQueryStrings = {};
-    let methodQueryStrings = {};
+    public toArray(): IHarMethod[] {
+        return this.methodArray||this.methodAsArray();
+    }
+}
 
-    // First get any parameters from the path
-    if (typeof openApi.paths[path].parameters !== 'undefined') {
-        pathQueryStrings = parseParametersToQuery(
-            openApi,
-            openApi.paths[path].parameters,
-            values
-        );
+class PathToHar implements IPathToHar {
+
+    private methodsMap: { [method: string] : IMethodToHar } = {};
+    private pathArray: IHarPath[];
+
+    public readonly parameters: Parameters;
+    public readonly baseUrl: string;
+    public readonly path: string;
+    public readonly url: string;
+    public readonly description: string;
+
+    constructor(scheme: PathItemObjectWrapper) {
+        this.parameters = new Parameters(scheme.parameters as ParameterObject[]);
+        this.baseUrl = scheme.baseUrl;
+        this.path = scheme.pathname;
+        this.url = `${this.baseUrl}${this.path}`;
+        this.description = scheme.description || 'No description available';
+        scheme.methods.forEach(method => this.createMethods(method));
     }
 
-    if (typeof openApi.paths[path][method].parameters !== 'undefined') {
-        methodQueryStrings = parseParametersToQuery(
-            openApi,
-            openApi.paths[path][method].parameters,
-            values
-        );
+    private createMethods(scheme: OperationObjectWrapper): void {
+        const harMethod = new MethodToHar(scheme, this);
+        this.methodsMap[scheme.method.toLowerCase()] = harMethod;
     }
 
-    // Merge query strings, with method overriding path
-    // from the spec:
-    // If a parameter is already defined at the Path Item, the new definition will override
-    // it but can never remove it.
-    // https://swagger.io/specification/
-    const queryStrings = Object.assign(pathQueryStrings, methodQueryStrings);
-    return Object.values(queryStrings);
-};
+    private createHarPath(method: IMethodToHar): IHarPath {
+        const { url, path: pathname, description } = this;
+        return { url, pathname, description, method: method.httpMethod, hars: method.toArray() }
+    }
 
-const getFullPath = function (openApi: OpenAPIObject, path: string, method: string): string {
-    let fullPath = path;
-    const parameters =
-        openApi.paths[path].parameters || openApi.paths[path][method].parameters;
+    private pathAsArray(): IHarPath[] {
+        this.pathArray = this.methods.map(method => this.createHarPath(method));
+        return this.pathArray;
+    }
 
-    if (typeof parameters !== 'undefined') {
-        for (let param of parameters) {
-            if (typeof param['$ref'] === 'string' && /^#/.test(param['$ref'])) {
-                param = resolveRef(openApi, param['$ref']);
-            }
-            if (
-                typeof param.in !== 'undefined' &&
-                param.in.toLowerCase() === 'path'
-            ) {
-                if (typeof param.example !== 'undefined') {
-                    // only if the schema has an example value
-                    fullPath = fullPath.replace('{' + param.name + '}', param.example);
-                }
-            }
+    public get methods(): IMethodToHar[] {
+        return Object.values(this.methodsMap);
+    }
+
+    public get availableMethods(): string[] {
+        return Object.keys(this.methodsMap);
+    }
+
+    public getMethod(method: HttpMethod): IMethodToHar {
+        if ( !this.methodsMap[method] ) {
+            throw new InvalidMethodError(this.path, method);
         }
-    }
-    return fullPath;
-};
-
-/**
- * Get an array of objects describing the header for a path and method pair
- * described in the given OpenAPI document.
- *
- * @param  {Object} openApi OpenAPI document
- * @param  {string} path    Key of the path
- * @param  {string} method  Key of the method
- * @return {array}          List of objects describing the header
- */
-const getHeadersArray = function (openApi, path, method) {
-    const headers = [];
-    const pathObj = openApi.paths[path][method];
-
-    // 'accept' header:
-    if (typeof pathObj.consumes !== 'undefined') {
-        for (const type of pathObj.consumes) {
-            headers.push({
-                name: 'accept',
-                value: type,
-            });
-        }
+        return this.methodsMap[method];
     }
 
-    // headers defined in path object:
-    if (typeof pathObj.parameters !== 'undefined') {
-        for (const param of pathObj.parameters) {
-            if (
-                typeof param.in !== 'undefined' &&
-                param.in.toLowerCase() === 'header'
-            ) {
-                headers.push(getParameterValues(param));
-            }
-        }
+    public get get(): IMethodToHar {
+        return this.getMethod('get');
     }
 
-    // security:
-    let basicAuthDef;
-    let apiKeyAuthDef;
-    let oauthDef;
-    if (typeof pathObj.security !== 'undefined') {
-        for (const scheme of pathObj.security) {
-            const secScheme = Object.keys(scheme) as any;
-            const secDefinition = openApi.securityDefinitions
-                ? openApi.securityDefinitions[secScheme]
-                : openApi.components.securitySchemes[secScheme];
-            const authType = secDefinition.type.toLowerCase();
-            let authScheme = null;
-
-            if (authType !== 'apikey' && secDefinition.scheme != null) {
-                authScheme = secDefinition.scheme.toLowerCase();
-            }
-
-            switch (authType) {
-                case 'basic':
-                    basicAuthDef = secScheme;
-                    break;
-                case 'apikey':
-                    if (secDefinition.in === 'header') {
-                        apiKeyAuthDef = secDefinition;
-                    }
-                    break;
-                case 'oauth2':
-                    oauthDef = secScheme;
-                    break;
-                case 'http':
-                    switch (authScheme) {
-                        case 'bearer':
-                            oauthDef = secScheme;
-                            break;
-                        case 'basic':
-                            basicAuthDef = secScheme;
-                            break;
-                    }
-                    break;
-            }
-        }
-    } else if (typeof openApi.security !== 'undefined') {
-        // Need to check OAS 3.0 spec about type http and scheme
-        for (const scheme of openApi.security) {
-            const secScheme = Object.keys(scheme) as any;
-            const secDefinition = openApi.components.securitySchemes[secScheme];
-            const authType = secDefinition.type.toLowerCase();
-            let authScheme = null;
-
-            if (authType !== 'apikey' && authType !== 'oauth2') {
-                authScheme = secDefinition.scheme.toLowerCase();
-            }
-
-            switch (authType) {
-                case 'http':
-                    switch (authScheme) {
-                        case 'bearer':
-                            oauthDef = secScheme;
-                            break;
-                        case 'basic':
-                            basicAuthDef = secScheme;
-                            break;
-                    }
-                    break;
-                case 'basic':
-                    basicAuthDef = secScheme;
-                    break;
-                case 'apikey':
-                    if (secDefinition.in === 'header') {
-                        apiKeyAuthDef = secDefinition;
-                    }
-                    break;
-                case 'oauth2':
-                    oauthDef = secScheme;
-                    break;
-            }
-        }
+    public get put(): IMethodToHar {
+        return this.getMethod('put');
     }
 
-    if (basicAuthDef) {
-        headers.push({
-            name: 'Authorization',
-            value: 'Basic ' + 'REPLACE_BASIC_AUTH',
-        });
-    } else if (apiKeyAuthDef) {
-        headers.push({
-            name: apiKeyAuthDef.name,
-            value: 'REPLACE_KEY_VALUE',
-        });
-    } else if (oauthDef) {
-        headers.push({
-            name: 'Authorization',
-            value: 'Bearer ' + 'REPLACE_BEARER_TOKEN',
-        });
+    public get post(): IMethodToHar {
+        return this.getMethod('post');
     }
 
-    return headers;
-};
-
-/**
- * Produces array of HAR files for given OpenAPI document
- *
- * @param  {object}   openApi          OpenAPI document
- * @param  {Function} callback
- */
-export function getAll(openApi) {
-    try {
-        // iterate openApi and create har objects:
-        const harList = [];
-        for (let path in openApi.paths) {
-            for (let method in openApi.paths[path]) {
-                const url = getBaseUrl(openApi, path, method) + path;
-                const hars = getEndpoint(openApi, path, method);
-                // need to push multiple here
-                harList.push({
-                    method: method.toUpperCase(),
-                    url: url,
-                    description:
-                        openApi.paths[path][method].description ||
-                        'No description available',
-                    hars: hars,
-                });
-            }
-        }
-
-        return harList;
-    } catch (e) {
-        console.log(e);
+    public get delete(): IMethodToHar {
+        return this.getMethod('delete');
     }
-};
 
-/**
- * Returns the value referenced in the given reference string
- *
- * @param  {object} openApi  OpenAPI document
- * @param  {string} ref      A reference string
- * @return {any}
- */
-const resolveRef = function (openApi, ref) {
-    const parts = ref.split('/');
+    public get options(): IMethodToHar {
+        return this.getMethod('options');
+    }
 
-    if (parts.length <= 1) return {}; // = 3
+    public get head(): IMethodToHar {
+        return this.getMethod('head');
+    }
 
-    const recursive = function (obj, index) {
-        if (index + 1 < parts.length) {
-            // index = 1
-            let newCount = index + 1;
-            return recursive(obj[parts[index]], newCount);
-        } else {
-            return obj[parts[index]];
+    public get trace(): IMethodToHar {
+        return this.getMethod('trace');
+    }
+
+    public get patch(): IMethodToHar {
+        return this.getMethod('patch');
+    }
+
+    public toArray(): IHarPath[] {
+        return this.pathArray||this.pathAsArray();
+    }
+}
+
+export class ApiToHar {
+
+    private scheme: OpenApiWrapper;
+
+    private pathsMap: { [path: string] : PathToHar } = {};
+    private pathsArray: IHarPath[];
+
+    constructor(scheme: OpenAPIObject) {
+        this.scheme = new OpenApiWrapper(scheme);
+    }
+
+    private getPaths(): PathToHar[] {
+        this.scheme.paths
+            .filter(path => !this.pathsMap[path.pathname])
+            .forEach(path => this.createPath(path));
+        return Object.values(this.pathsMap)
+    }
+
+    private pathsAsArray(): IHarPath[] {
+        this.pathsArray = [];
+        this.pathsArray = this.pathsArray.concat(...this.paths.map(path => path.toArray()));
+        return this.pathsArray;
+    }
+
+    private createPath(path: PathItemObjectWrapper): void {
+        const harPath = new PathToHar(path);
+        this.pathsMap[path.pathname] = harPath;
+    }
+
+    public get paths(): IPathToHar[] {
+        return this.getPaths();
+    }
+
+    public getPath(path: string): IPathToHar {
+        if ( !this.pathsMap[path]) {
+            this.createPath(this.scheme.getPath(path))
         }
-    };
-    return recursive(openApi, 1);
-};
+        return this.pathsMap[path];
+    }
+
+    public toArray(): IHarPath[] {
+        return this.pathsArray||this.pathsAsArray();
+    }
+}
