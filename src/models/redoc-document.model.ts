@@ -5,6 +5,7 @@ import { clone } from '../utils/object-clone.util';
 import { normalizeSnippetCode } from '../utils/normalize-snippet-code';
 import { getEndpointSnippets, Language } from '../code-snippet-gen/code-gen';
 import { SnippetGenerateError }  from '../errors/snippet-generate.error';
+import { HttpMethod } from 'code-snippet-gen/openapi-wrapper';
 
 export class RedocDocumentModel {
 
@@ -25,7 +26,7 @@ export class RedocDocumentModel {
         }
     }
 
-    private static generateCodeSample(document: RedocDocument, path: string, method: string, languages: Language[]): CodeSampleObject[] {
+    private static generateCodeSample(document: RedocDocument, path: string, method: HttpMethod, languages: Language[]): CodeSampleObject[] {
         const endpoint = getEndpointSnippets(document as OpenAPIObject, path, method, languages);
         return endpoint.snippets.map(snippet => ({lang: snippet.title, source: normalizeSnippetCode(snippet.content) }));
     }
@@ -43,7 +44,7 @@ export class RedocDocumentModel {
             for ( const method in operations ) {
                 const operation = operations[method];
                 try {
-                    operation['x-codeSamples'] = operation['x-codeSamples'] || RedocDocumentModel.generateCodeSample(document, path, method, codeSnippetsLanguages);
+                    operation['x-codeSamples'] = operation['x-codeSamples'] || RedocDocumentModel.generateCodeSample(document, path, method as HttpMethod, codeSnippetsLanguages);
                 } catch (e) {
                     throw new SnippetGenerateError(operation, path, method, e);
                 }
