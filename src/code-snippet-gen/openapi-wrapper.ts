@@ -66,8 +66,31 @@ export class OpenApiWrapper {
     public get baseUrl(): string {
         const server = this.#openApi.servers?.find(server => !!server.url);
 
-        if ( !server ) {
-            throw new NoServerError();
+        if (!server) {
+            let baseUrl = '';
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-ignore
+            if (typeof this.#openApi.schemes !== 'undefined') {
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore
+                baseUrl += this.#openApi.schemes[0];
+            }
+            else {
+                baseUrl += 'http';
+            }
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-ignore
+            if (this.#openApi.basePath === '/') {
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore
+                baseUrl += '://' + this.#openApi.host;
+            }
+            else {
+                // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                // @ts-ignore
+                baseUrl += '://' + this.#openApi.host + this.#openApi.basePath;
+            }
+            return baseUrl;
         }
 
         return server?.url;
