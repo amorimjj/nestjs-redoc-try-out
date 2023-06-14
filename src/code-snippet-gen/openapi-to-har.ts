@@ -35,7 +35,7 @@ export interface IHarMethod extends IHar {
     httpVersion: string;
     method: HttpMethod;
     pathname: string;
-    postData?: { mimeType?: string, text?: string, params?: IHarItem[] };
+    postData?: { mimeType: string, text: string, params?: IHarItem[] };
     queryString: IHarItem[];
 }
 
@@ -112,8 +112,8 @@ abstract class ParameterItem<Scheme extends ParameterObject|SecuritySchemeObject
         return this.in === 'cookie';
     }
 
-    protected abstract setName();
-    protected abstract setValue();
+    protected abstract setName(): void;
+    protected abstract setValue(): void;
 
     public isEqualTo(paramenter: ParameterItem<Scheme>) {
         return this.name === paramenter.name && this.in === paramenter.in;
@@ -132,7 +132,7 @@ class AuthParameterToHar extends ParameterItem<SecuritySchemeObject> {
 
     private get authType(): string {
         const authType = this.scheme.type.toLowerCase();
-        return authType === 'http' ? this.scheme.scheme?.toLowerCase() : authType;
+        return authType === 'http' ? this.scheme.scheme?.toLowerCase() ?? 'http' : authType;
     }
 
     private get isApikey(): boolean {
@@ -173,7 +173,7 @@ class AuthParameterToHar extends ParameterItem<SecuritySchemeObject> {
 class ParameterToHar extends ParameterItem<ParameterObject> {
 
     private get type(): string {
-        return this.scheme.schema['type'];
+        return this.scheme?.schema && (this.scheme?.schema as any)['type'];
     }
 
     private get example(): string {
@@ -181,7 +181,10 @@ class ParameterToHar extends ParameterItem<ParameterObject> {
     }
 
     private get default(): string {
-        return this.scheme.schema['default'] || this.example;
+        return (
+            (this.scheme?.schema && (this.scheme?.schema as any)['default'])
+            || this.example
+        );
     }
 
     protected setName(): void {
@@ -204,8 +207,8 @@ class Parameters implements IParameters {
         this.parent = parent;
     }
 
-    private merge(parameters: ParameterToHar[], parentParameters: ParameterToHar[]): IHarItem[] {
-        (parentParameters||[]).forEach(parentParameter => {
+    private merge(parameters: ParameterToHar[], parentParameters?: ParameterToHar[]): IHarItem[] {
+        (parentParameters || []).forEach(parentParameter => {
             if ( !parameters.find(parameter => parameter.isEqualTo(parentParameter)) ) {
                 parameters.push(parentParameter);
             }
@@ -269,7 +272,7 @@ class PostDataToHar {
     private postDataArray: IHarPostData[];
 
     constructor(requestBody: RequestBodyObject) {
-        this.content = requestBody?.content||{};
+        this.content = requestBody?.content || {};
     }
 
     private encodeURIComponent(value: string): string {
@@ -288,7 +291,7 @@ class PostDataToHar {
 
     private sampleToPayLoad(sample: Record<string, string>, type: MimeType): IHarPostData {
         if ( sample === undefined ) {
-            return;
+            throw new Error('Sample is undefined');
         }
         return this.sampleToFormData(sample, type);
     }
@@ -386,7 +389,7 @@ class MethodToHar implements IMethodToHar {
         this.headers = [...parameters.getHeaderParameters(), ...security.getSecurityHeaders()];
         this.queryString = parameters.getQueryParameters();
         this.cookies = parameters.getCookieParameters();
-        this.postData = new PostDataToHar(scheme.requestBody);
+        this.postData = new PostDataToHar(scheme.requestBody ?? { content: { 'default': {}}});
     }
 
     private metaData(postData?: IHarPostData): { headers: IHarItem[], comment: string } {
@@ -395,16 +398,30 @@ class MethodToHar implements IMethodToHar {
         return { headers, comment }
     }
 
-    private methodToHar(postData?: IHarPostData): IHarMethod {
+    private methodToHar(postData: IHarPostData): IHarMethod {
         const { httpMethod: method, pathname, url, queryString, cookies, httpVersion, headersSize, bodySize } = this;
         const { headers, comment } = this.metaData(postData);
+        const postDataObj = Object.assign({}, postData);
+        const { mimeType, ...restOfPostDataObj } = postData ?? {
+          ...postDataObj,
+        };
         return {
-            method, pathname, url, headers, queryString, httpVersion, cookies, headersSize, bodySize, ...(postData && { postData }), comment
-        }
+          method,
+          pathname,
+          url,
+          headers,
+          queryString,
+          httpVersion,
+          cookies,
+          headersSize,
+          bodySize,
+          ...(restOfPostDataObj && { restOfPostDataObj }),
+          comment,
+        };
     }
 
     private methodAsArray(): IHarMethod[] {
-        this.methodArray = this.postData.isEmpty ? [ this.methodToHar() ] : this.postData.toArray().map(postData => this.methodToHar(postData))
+        this.methodArray = this.postData.isEmpty ? [ this.methodToHar({}) ] : this.postData.toArray().map(postData => this.methodToHar(postData))
         return this.methodArray;
     }
 

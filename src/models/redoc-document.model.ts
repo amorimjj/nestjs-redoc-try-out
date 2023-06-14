@@ -5,7 +5,7 @@ import { clone } from '../utils/object-clone.util';
 import { normalizeSnippetCode } from '../utils/normalize-snippet-code';
 import { getEndpointSnippets, Language } from '../code-snippet-gen/code-gen';
 import { SnippetGenerateError }  from '../errors/snippet-generate.error';
-import { HttpMethod } from 'code-snippet-gen/openapi-wrapper';
+import { HttpMethod } from '../code-snippet-gen/openapi-wrapper';
 
 export class RedocDocumentModel {
 
@@ -17,7 +17,8 @@ export class RedocDocumentModel {
     }
 
     private static createTagsGroup(document: RedocDocument): TagGroupOptions[] {
-        return document.tags?.map(tag => ({ name: tag.description || tag.name, tags: [tag.name]}))
+        const tags = document.tags ?? [{ name: 'default', description: 'default' }];
+        return tags.map(tag => ({ name: tag.description || tag.name, tags: [tag.name]}))
     }
 
     private static addTagsGroup(document: RedocDocument, options?: RedocModuleOptions):void  {
@@ -42,7 +43,7 @@ export class RedocDocumentModel {
         for( const path in document.paths ) {
             const operations = document.paths[path];
             for ( const method in operations ) {
-                const operation = operations[method];
+                const operation = (operations as any)[method];
                 try {
                     operation['x-codeSamples'] = operation['x-codeSamples'] || RedocDocumentModel.generateCodeSample(document, path, method as HttpMethod, codeSnippetsLanguages);
                 } catch (e) {

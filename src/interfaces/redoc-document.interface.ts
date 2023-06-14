@@ -33,3 +33,36 @@ export interface RedocDocument extends Partial<OpenAPIObject> {
   'x-tagGroups': TagGroupOptions[];
   paths: RedocPathsObject
 }
+
+
+class Teacher {
+  constructor (public name: string, public age: number) { }
+  
+  toString() {
+    return 'Teacher' + this.name + this.age;
+  }
+}
+
+class PRT extends Teacher { 
+  public name: string; public age: number; public subject: string;
+  constructor(name: string, age: number, subject: string) {
+    super(name, age);
+    this.subject = subject;
+  }
+
+  toString(): string {
+    return `PRT: ${this.name}, ${this.age}, ${this.subject}`;
+  }
+}
+
+class TGT extends Teacher {
+  constructor(public name: string, public age: number, public subject: string) {
+    super(name, age);
+  }
+ }
+
+class PGT extends Teacher { 
+  constructor(public name: string, public age: number, public subject: string) {
+    super(name, age);
+  }
+}
