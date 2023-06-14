@@ -12,7 +12,7 @@ export class RedocTryOutModule {
     path: string,
     app: INestApplication,
     document: OpenAPIObject,
-    options?: RedocModuleOptions
+    options: RedocModuleOptions
   ): Promise<void> {
     try {
       const redocDocument = RedocDocumentModel.fromOpenApi(document, options);
