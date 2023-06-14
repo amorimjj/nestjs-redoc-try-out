@@ -11,7 +11,7 @@ export class NotImplementedError extends Error { }
 export abstract class AdapterHandler
 {
     protected abstract get adapterName(): string;
-    protected abstract setup(): void;
+    protected abstract setup(): Promise<void> | void;
 
     private static httpAdapter: HttpServer;
     private static path: string;
@@ -38,7 +38,7 @@ export abstract class AdapterHandler
     }
 
     private get isExpectedAdapter(): boolean {
-        return this.httpAdapter && this.httpAdapter.constructor && this.httpAdapter.constructor.name === this.adapterName;
+        return this.httpAdapter?.constructor?.name === this.adapterName;
     }
 
     protected setNextHandler(handler: AdapterHandler): AdapterHandler {
@@ -89,7 +89,7 @@ class ExpressAdapterHandler extends AdapterHandler {
 
     private setupJS(): void {
         const pathToModule = require.resolve('redoc-try-it-out');
-        this.httpAdapter.get(`${this.path}/${tryItOutJsMinFileName}` ,  (req: Request, res: Response) => {
+        this.httpAdapter.get(`${this.path}/${tryItOutJsMinFileName}` ,  (req: Request, res: Response ) => {
             res.setHeader('Content-Type', 'plain/text');
             res.sendFile(pathModule.join(pathModule.dirname(pathToModule), tryItOutJsMinFileName));
         });
@@ -102,12 +102,8 @@ class ExpressAdapterHandler extends AdapterHandler {
     }
 }
 
-class FastifyAdapterHandler extends AdapterHandler {
-    protected get adapterName() {
-        return 'FastifyAdapter';
-    }
-
-    protected async setup(): Promise<void> {
-        throw new NotImplementedError('Fastify is not implemented yet');
-    }
+class FastifyAdapterHandler extends ExpressAdapterHandler {
+  protected get adapterName() {
+    return "FastifyAdapter";
+  }
 }
