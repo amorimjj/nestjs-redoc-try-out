@@ -1,8 +1,7 @@
-import { RedocOptions } from 'redoc-try-it-out';
-import { Language } from '../code-snippet-gen/code-gen';
+import { RedocOptions } from "redocly-try-it-out";
+import { Language } from "../code-snippet-gen/code-gen";
 
 export interface RedocModuleOptions extends RedocOptions {
-
   /**
    *  Web site title
    *  default: document.info.title || document.info.description || 'Online documentation'
@@ -40,6 +39,9 @@ export interface RedocModuleOptions extends RedocOptions {
 
   /** Logo Options */
   logo?: LogoOptions;
+
+  /** Custom CSS */
+  customCss?: string;
 }
 
 export interface LogoOptions {

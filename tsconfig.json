@@ -12,9 +12,7 @@
     "forceConsistentCasingInFileNames": true,
     "declaration": true,
     "sourceMap": false,
-    "declaration": true,
-    "sourceMap": false,
     "outDir": "dist"
   },
-  "exclude": ["node_modules",  "dist", "**/*spec.ts"]
+  "exclude": ["node_modules", "dist", "**/*spec.ts"]
 }

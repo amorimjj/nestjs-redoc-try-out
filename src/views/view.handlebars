@@ -16,6 +16,11 @@
         {{/if}}
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet">
+        {{#if options.customCss}}
+            <style>
+            {{options.customCss}}
+            </style>
+        {{/if}}
     </head>
     <body>
         <div id="redoc_container"></div>

@@ -1,6 +1,6 @@
 {
-  "name": "nestjs-redoc-try-out",
-  "version": "1.0.3",
+  "name": "nest-redoc-try-out",
+  "version": "1.0.10",
   "description": "NestJS module for Redoc-try-it-out",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -33,6 +33,7 @@
   "homepage": "https://github.com/amorimjj/nestjs-redoc-try-out#readme",
   "devDependencies": {
     "@nestjs/testing": "^8.0.11",
+    "@types/express": "^5.0.0",
     "@types/jest": "^26.0.15",
     "@types/node": "^16.11.0",
     "@typescript-eslint/eslint-plugin": "^5.0.0",
@@ -49,10 +50,11 @@
     "@nestjs/platform-express": "^8.0.11",
     "@nestjs/platform-fastify": "^8.0.11",
     "@nestjs/swagger": "^5.0.0",
+    "express": "^4.21.1",
     "express-handlebars": "^5.3.4",
     "httpsnippet": "^2.0.0",
     "openapi-sampler": "^1.1.0",
-    "redoc-try-it-out": "^1.0.9"
+    "redocly-try-it-out": "github:edupoli/redoc-try-it-out"
   },
   "peerDependencies": {
     "@nestjs/common": "^8.0.11",

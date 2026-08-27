@@ -73,12 +73,49 @@ export class OpenApiWrapper {
         return server?.url;
     }
 
+    private resolveRef(ref: string): any {
+        return ref.split('/').reduce((previous, current) => previous === '#' ? this.#openApi[current] : previous[current]);
+    }
+
     private resolveScheme(resolve: SchemaObject|ReferenceObject): SchemaObject {
-        if ( !resolve['$ref'] ) {
+        if ( !resolve ) {
             return resolve as SchemaObject;
         }
-        const schema = resolve['$ref'].split('/').reduce((previous, current) => previous === '#' ? this.#openApi[current] : previous[current]);
-        return this.resolveScheme(schema);
+
+        if ( resolve['$ref'] ) {
+            const refPath = resolve['$ref'];
+            const schemaName = refPath.split('/').pop();
+            const resolved = this.resolveScheme(this.resolveRef(refPath));
+            if ( resolved && !resolved.title && schemaName ) {
+                resolved.title = schemaName;
+            }
+            return resolved;
+        }
+
+        const schema = resolve as SchemaObject;
+        const resolveArray = (arr: any[]|undefined) => arr?.forEach((item, index) => {
+            if ( item ) arr[index] = this.resolveScheme(item);
+        });
+        const resolveMap = (obj: Record<string, any>|undefined) => {
+            if ( obj ) {
+                for ( const key of Object.keys(obj) ) {
+                    if ( obj[key] ) obj[key] = this.resolveScheme(obj[key]);
+                }
+            }
+        };
+
+        resolveArray(schema.oneOf);
+        resolveArray(schema.anyOf);
+        resolveArray(schema.allOf);
+        if ( schema.items ) {
+            schema.items = this.resolveScheme(schema.items);
+        }
+        resolveMap(schema.properties);
+        if ( schema.additionalProperties && typeof schema.additionalProperties === 'object' ) {
+            schema.additionalProperties = this.resolveScheme(schema.additionalProperties as any);
+        }
+
+        return schema;
     }
 
     private resolveRequestBodyReferences(requestBody: RequestBodyObject|ReferenceObject) {
